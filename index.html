@@ -430,7 +430,8 @@
         <button class="btn secondary" onclick="selectAllComision(true)">Seleccionar todos</button>
         <button class="btn secondary" onclick="selectAllComision(false)">Deseleccionar todos</button>
         <button class="btn secondary" onclick="viewComisionPDF()">🖨️ Imprimir</button>
-        <button class="btn" onclick="downloadComisionPDF()" style="margin-left:auto;">⬇️ Descargar PDF</button>
+        <button class="btn secondary" onclick="openMailModalComision()" style="margin-left:auto;">✉️ Enviar por mail</button>
+        <button class="btn" onclick="downloadComisionPDF()">⬇️ Descargar PDF</button>
       </div>
       <table style="margin-top:14px;">
         <thead><tr><th class="checkbox-cell">Incluir</th><th>Código</th><th>Producto</th><th>Precio en lista</th></tr></thead>
@@ -1426,13 +1427,13 @@ const MAIL_TXT = {
 // De dónde sale lo que se envía: la tarifa en pantalla o un registro de la bitácora
 let mailContext = { modo: "tarifa", log: null };
 
-function fillMailModal({ marca, idioma, cliente, nombreLista, destinatario }){
+function fillMailModal({ marca, idioma, cliente, nombreLista, destinatario, asunto, cuerpo }){
   const T = MAIL_TXT[idioma] || MAIL_TXT.es;
   const brand = BRANDS[marca];
   document.getElementById("m_to").value = destinatario || "";
   document.getElementById("m_cc").value = "";
-  document.getElementById("m_asunto").value = T.asunto(brand.label, nombreLista);
-  document.getElementById("m_mensaje").value = `${T.saludo(cliente)}\n\n${T.cuerpo}\n\n${T.firma}\n${(BAUER_SESSION && BAUER_SESSION.nombre) || ''}\n${brand.label}`;
+  document.getElementById("m_asunto").value = asunto || T.asunto(brand.label, nombreLista);
+  document.getElementById("m_mensaje").value = `${T.saludo(cliente)}\n\n${cuerpo || T.cuerpo}\n\n${T.firma}\n${(BAUER_SESSION && BAUER_SESSION.nombre) || ''}\n${brand.label}`;
   document.getElementById("m_info").textContent = `Sale desde ${marca==='rietmann'?'tarifas@rietmanniberica.com':'tarifas@bocadofoods.com'} con el PDF adjunto. Las respuestas del cliente llegan a tu email.`;
   document.getElementById("m_enviar").disabled = false;
   document.getElementById("m_enviar").textContent = "Enviar";
@@ -1448,6 +1449,23 @@ async function openMailModalLog(id){
     document.querySelector("#mailModal h3").textContent = r.estado==='enviado' ? "Volver a enviar tarifa" : "Enviar tarifa por mail";
     fillMailModal({ marca: r.business_line, idioma: r.idioma, cliente: r.cliente || "", nombreLista: r.lista_nombre || "", destinatario: r.enviado_a || "" });
   }catch(e){ showMsg(e.message, "err"); }
+}
+
+// Enviar la hoja de comisiones del agente comercial (no se registra en la bitácora)
+function openMailModalComision(){
+  const listaId = document.getElementById("c_lista").value;
+  if(!listaId || comSelectedIds.size===0){ showMsg("Elegí una lista y al menos un producto antes de enviar.", "err"); return; }
+  const lista = LISTS.find(l=>l.id===listaId);
+  const brand = BRANDS[CURRENT_BRAND];
+  const pct = Number(document.getElementById("c_comision").value) || 0;
+  mailContext = { modo: "comision", log: null };
+  document.querySelector("#mailModal h3").textContent = "Enviar hoja de agente comercial";
+  fillMailModal({
+    marca: CURRENT_BRAND, idioma: "es",
+    cliente: document.getElementById("c_nombre").value.trim(),
+    asunto: `${brand.label} — Agente comercial · ${lista.nombre_lista} (comisión ${fmtPct(pct)})`,
+    cuerpo: `Te adjuntamos la lista de precios ${lista.nombre_lista} con el detalle de la comisión del ${fmtPct(pct)} por producto. Quedamos a tu disposición para cualquier consulta.`
+  });
 }
 
 function openMailModal(){
@@ -1472,7 +1490,11 @@ async function sendTarifaMail(){
   btn.disabled = true; btn.textContent = "Enviando...";
   try{
     let doc, filename, marca, logId = null;
-    if(mailContext.modo === "log"){
+    if(mailContext.modo === "comision"){
+      const rc = await prepareComisionPDF();
+      if(!rc) throw new Error("Elegí una lista y al menos un producto.");
+      doc = rc.doc; filename = rc.filename; marca = CURRENT_BRAND;
+    }else if(mailContext.modo === "log"){
       const r = mailContext.log;
       doc = buildLogDoc(r); filename = r.filename || "Tarifa.pdf"; marca = r.business_line; logId = r.id;
     }else{
@@ -1495,7 +1517,7 @@ async function sendTarifaMail(){
     if(!r.ok || !d.ok) throw new Error(d.error || ("Error " + r.status));
     closeMailModal();
     document.getElementById("m_to").value = ""; document.getElementById("m_cc").value = "";
-    showMsg(`Tarifa enviada a ${to}.` + (logId ? " Quedó registrada en la bitácora." : ""));
+    showMsg(`${mailContext.modo==='comision' ? 'Hoja de agente comercial' : 'Tarifa'} enviada a ${to}.` + (logId ? " Quedó registrada en la bitácora." : ""));
     if(document.getElementById("panel-bitacora").classList.contains("active")) loadBitacora();
   }catch(e){
     showMsg("No se pudo enviar: " + e.message, "err");
