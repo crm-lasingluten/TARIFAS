@@ -1423,7 +1423,36 @@ const MAIL_TXT = {
   es: { asunto: (m,l)=>`${m} — Tarifa ${l}`, saludo: c=>`Hola${c?' '+c:''},`, cuerpo: "Te adjuntamos nuestra tarifa de precios. Quedamos a tu disposición para cualquier consulta.", firma: "Un saludo," },
   en: { asunto: (m,l)=>`${m} — Price list ${l}`, saludo: c=>`Dear ${c||'customer'},`, cuerpo: "Please find attached our price list. Do not hesitate to contact us if you have any questions.", firma: "Kind regards," }
 };
+// De dónde sale lo que se envía: la tarifa en pantalla o un registro de la bitácora
+let mailContext = { modo: "tarifa", log: null };
+
+function fillMailModal({ marca, idioma, cliente, nombreLista, destinatario }){
+  const T = MAIL_TXT[idioma] || MAIL_TXT.es;
+  const brand = BRANDS[marca];
+  document.getElementById("m_to").value = destinatario || "";
+  document.getElementById("m_cc").value = "";
+  document.getElementById("m_asunto").value = T.asunto(brand.label, nombreLista);
+  document.getElementById("m_mensaje").value = `${T.saludo(cliente)}\n\n${T.cuerpo}\n\n${T.firma}\n${(BAUER_SESSION && BAUER_SESSION.nombre) || ''}\n${brand.label}`;
+  document.getElementById("m_info").textContent = `Sale desde ${marca==='rietmann'?'tarifas@rietmanniberica.com':'tarifas@bocadofoods.com'} con el PDF adjunto. Las respuestas del cliente llegan a tu email.`;
+  document.getElementById("m_enviar").disabled = false;
+  document.getElementById("m_enviar").textContent = "Enviar";
+  document.getElementById("mailModal").classList.add("open");
+  setTimeout(()=>document.getElementById("m_to").focus(), 50);
+}
+
+// Reenviar desde la bitácora: mismo PDF que se generó en su momento
+async function openMailModalLog(id){
+  try{
+    const r = await getLogRow(id);
+    mailContext = { modo: "log", log: r };
+    document.querySelector("#mailModal h3").textContent = r.estado==='enviado' ? "Volver a enviar tarifa" : "Enviar tarifa por mail";
+    fillMailModal({ marca: r.business_line, idioma: r.idioma, cliente: r.cliente || "", nombreLista: r.lista_nombre || "", destinatario: r.enviado_a || "" });
+  }catch(e){ showMsg(e.message, "err"); }
+}
+
 function openMailModal(){
+  mailContext = { modo: "tarifa", log: null };
+  document.querySelector("#mailModal h3").textContent = "Enviar tarifa por mail";
   const listaId = document.getElementById("t_lista").value;
   if(!listaId || selectedProductIds.size===0){ showMsg("Elegí una lista y al menos un producto antes de enviar.", "err"); return; }
   const lista = LISTS.find(l=>l.id===listaId);
@@ -1432,13 +1461,7 @@ function openMailModal(){
   const brand = BRANDS[CURRENT_BRAND];
   const cliente = document.getElementById("t_cliente").value.trim();
   const nombreLista = (idioma==='en' && lista.nombre_lista_en) ? lista.nombre_lista_en : lista.nombre_lista;
-  document.getElementById("m_asunto").value = T.asunto(brand.label, nombreLista);
-  document.getElementById("m_mensaje").value = `${T.saludo(cliente)}\n\n${T.cuerpo}\n\n${T.firma}\n${(BAUER_SESSION && BAUER_SESSION.nombre) || ''}\n${brand.label}`;
-  document.getElementById("m_info").textContent = `Sale desde ${CURRENT_BRAND==='rietmann'?'tarifas@rietmanniberica.com':'tarifas@bocadofoods.com'} con el PDF adjunto. Las respuestas del cliente llegan a tu email.`;
-  document.getElementById("m_enviar").disabled = false;
-  document.getElementById("m_enviar").textContent = "Enviar";
-  document.getElementById("mailModal").classList.add("open");
-  setTimeout(()=>document.getElementById("m_to").focus(), 50);
+  fillMailModal({ marca: CURRENT_BRAND, idioma, cliente, nombreLista });
 }
 function closeMailModal(){ document.getElementById("mailModal").classList.remove("open"); }
 
@@ -1448,18 +1471,24 @@ async function sendTarifaMail(){
   const btn = document.getElementById("m_enviar");
   btn.disabled = true; btn.textContent = "Enviando...";
   try{
-    const result = await prepareCurrentTarifaPDF();
-    if(!result) throw new Error("Elegí una lista y al menos un producto.");
-    const pdf = result.doc.output('datauristring').split(',')[1];
-    let logId = null;
-    try{ logId = await logTarifa(result); }catch(e){ console.warn("No se pudo registrar en bitácora", e); }
+    let doc, filename, marca, logId = null;
+    if(mailContext.modo === "log"){
+      const r = mailContext.log;
+      doc = buildLogDoc(r); filename = r.filename || "Tarifa.pdf"; marca = r.business_line; logId = r.id;
+    }else{
+      const result = await prepareCurrentTarifaPDF();
+      if(!result) throw new Error("Elegí una lista y al menos un producto.");
+      doc = result.doc; filename = result.filename; marca = CURRENT_BRAND;
+      try{ logId = await logTarifa(result); }catch(e){ console.warn("No se pudo registrar en bitácora", e); }
+    }
+    const pdf = doc.output('datauristring').split(',')[1];
     const r = await fetch(`${SUPABASE_URL}/functions/v1/tarifas-mail`, {
       method: "POST", headers,
       body: JSON.stringify({
-        marca: CURRENT_BRAND, to, cc: document.getElementById("m_cc").value.trim(),
+        marca, to, cc: document.getElementById("m_cc").value.trim(),
         asunto: document.getElementById("m_asunto").value.trim(),
         mensaje: document.getElementById("m_mensaje").value,
-        filename: result.filename, pdf, log_id: logId
+        filename, pdf, log_id: logId
       })
     });
     const d = await r.json().catch(()=>({}));
@@ -1467,6 +1496,7 @@ async function sendTarifaMail(){
     closeMailModal();
     document.getElementById("m_to").value = ""; document.getElementById("m_cc").value = "";
     showMsg(`Tarifa enviada a ${to}.` + (logId ? " Quedó registrada en la bitácora." : ""));
+    if(document.getElementById("panel-bitacora").classList.contains("active")) loadBitacora();
   }catch(e){
     showMsg("No se pudo enviar: " + e.message, "err");
     btn.disabled = false; btn.textContent = "Enviar";
@@ -1503,6 +1533,7 @@ async function loadBitacora(){
         <td style="font-size:11px;color:#888;">${r.filename||''}</td>
         <td style="white-space:nowrap;">
           <button class="btn secondary" onclick="verTarifaLogPDF('${r.id}')">Ver PDF</button>
+          <button class="btn secondary" onclick="openMailModalLog('${r.id}')">${r.estado==='enviado'?'Reenviar':'Enviar'}</button>
           ${(r.estado!=='aprobado' && r.estado!=='enviado') ? `<button class="btn secondary" onclick="aprobarTarifa('${r.id}')">Aprobar</button>` : ''}
           <button class="btn secondary" onclick="eliminarTarifaLog('${r.id}')">Eliminar</button>
         </td>
@@ -1513,11 +1544,8 @@ async function loadBitacora(){
   }
 }
 
-async function verTarifaLogPDF(id){
-  try{
-    const rows = await sbGet(`pricing_tarifa_log?id=eq.${id}`);
-    const r = rows[0];
-    if(!r || !r.snapshot){ showMsg("No se encontró el detalle guardado de esta tarifa.", "err"); return; }
+// Rearma el PDF de un registro de la bitácora a partir de su snapshot
+function buildLogDoc(r){
     const brand = BRANDS[r.business_line];
     const tx = I18N[r.idioma] || I18N.es;
     const fechaStr = r.fecha_tarifa ? new Date(r.fecha_tarifa+"T00:00:00").toLocaleDateString(r.idioma==='en'?'en-GB':'es-ES') : '—';
@@ -1535,7 +1563,18 @@ async function verTarifaLogPDF(id){
       textCols: r.snapshot.columnas_texto || 2,
       columnStyles: r.snapshot.estilos_columnas || {}
     });
-    doc.output('dataurlnewwindow');
+    return doc;
+}
+async function getLogRow(id){
+  const rows = await sbGet(`pricing_tarifa_log?id=eq.${id}`);
+  const r = rows[0];
+  if(!r || !r.snapshot) throw new Error("No se encontró el detalle guardado de esta tarifa.");
+  return r;
+}
+async function verTarifaLogPDF(id){
+  try{
+    const r = await getLogRow(id);
+    buildLogDoc(r).output('dataurlnewwindow');
   }catch(e){
     showMsg("Error al regenerar el PDF: "+e.message, "err");
   }
