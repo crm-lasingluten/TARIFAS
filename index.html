@@ -115,6 +115,16 @@
     main{padding:0;}
     #tarifaPreview, #comisionPreview{border:none;padding:0;}
   }
+  /* ===== Modal envío por mail ===== */
+  .modal-bg{position:fixed;inset:0;background:rgba(20,17,15,.55);display:none;align-items:center;justify-content:center;z-index:1000;padding:20px;}
+  .modal-bg.open{display:flex;}
+  .modal{background:#fff;border-radius:6px;max-width:560px;width:100%;padding:22px;box-shadow:0 10px 40px rgba(0,0,0,.25);}
+  .modal h3{font-family:'Oswald',sans-serif;font-weight:600;margin-bottom:14px;}
+  .modal .field{margin-bottom:10px;}
+  .modal .field input,.modal .field textarea{width:100%;}
+  .modal .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
+  .modal .hint{font-size:11px;color:#888;margin-top:2px;}
+  .badge.enviado{background:#2e7d5b;}
 </style>
 </head>
 <body>
@@ -312,7 +322,8 @@
         <button class="btn secondary" onclick="selectAllProducts(true)">Seleccionar todos</button>
         <button class="btn secondary" onclick="selectAllProducts(false)">Deseleccionar todos</button>
         <button class="btn secondary" onclick="viewTarifaPDF()">🖨️ Imprimir</button>
-        <button class="btn" onclick="downloadTarifaPDF()" style="margin-left:auto;">⬇️ Descargar PDF</button>
+        <button class="btn secondary" onclick="openMailModal()" style="margin-left:auto;">✉️ Enviar por mail</button>
+        <button class="btn" onclick="downloadTarifaPDF()">⬇️ Descargar PDF</button>
       </div>
       <table style="margin-top:14px;">
         <thead><tr><th class="checkbox-cell">Incluir</th><th>Código</th><th>Producto</th><th>Precio en lista</th></tr></thead>
@@ -451,6 +462,21 @@
   </section>
   </div>
 </main>
+
+<div class="modal-bg no-print" id="mailModal" onclick="if(event.target===this) closeMailModal()">
+  <div class="modal">
+    <h3>Enviar tarifa por mail</h3>
+    <div class="field"><label>Para</label><input id="m_to" placeholder="cliente@empresa.com"><div class="hint">Varios destinatarios separados por coma.</div></div>
+    <div class="field"><label>CC (opcional)</label><input id="m_cc"></div>
+    <div class="field"><label>Asunto</label><input id="m_asunto"></div>
+    <div class="field"><label>Mensaje</label><textarea id="m_mensaje" style="min-height:140px;"></textarea></div>
+    <div class="hint" id="m_info"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeMailModal()">Cancelar</button>
+      <button class="btn" id="m_enviar" onclick="sendTarifaMail()">Enviar</button>
+    </div>
+  </div>
+</div>
 
 <script>
 // ======================================================================
@@ -1362,11 +1388,19 @@ async function prepareCurrentTarifaPDF(){
 async function downloadTarifaPDF(){
   const result = await prepareCurrentTarifaPDF();
   if(!result){ showMsg("Elegí una lista y al menos un producto antes de descargar.", "err"); return; }
-  const { doc, filename, data, head, body, groups, textCols, columnStyles } = result;
-  doc.save(filename);
-
+  result.doc.save(result.filename);
   try{
-    await sbPost("pricing_tarifa_log", {
+    await logTarifa(result);
+    showMsg("PDF descargado y registrado en la bitácora.");
+  }catch(e){
+    showMsg("El PDF se descargó, pero no se pudo guardar en la bitácora: "+e.message, "err");
+  }
+}
+
+// Registra la tarifa en la bitácora y devuelve el id del registro
+async function logTarifa(result){
+  const { filename, data, head, body, groups, textCols, columnStyles } = result;
+  const rows = await sbPost("pricing_tarifa_log", {
       business_line: CURRENT_BRAND,
       lista_id: data.lista.id,
       lista_nombre: data.nombreListaMostrar,
@@ -1378,10 +1412,64 @@ async function downloadTarifaPDF(){
       snapshot: { encabezados: head[0], filas: body, condiciones: data.condicionesMostrar || '', grupos: groups, columnas_texto: textCols, estilos_columnas: columnStyles },
       filename,
       estado: 'borrador'
+  });
+  return rows && rows[0] ? rows[0].id : null;
+}
+
+// ======================================================================
+// ENVÍO POR MAIL (Edge Function tarifas-mail → Resend)
+// ======================================================================
+const MAIL_TXT = {
+  es: { asunto: (m,l)=>`${m} — Tarifa ${l}`, saludo: c=>`Hola${c?' '+c:''},`, cuerpo: "Te adjuntamos nuestra tarifa de precios. Quedamos a tu disposición para cualquier consulta.", firma: "Un saludo," },
+  en: { asunto: (m,l)=>`${m} — Price list ${l}`, saludo: c=>`Dear ${c||'customer'},`, cuerpo: "Please find attached our price list. Do not hesitate to contact us if you have any questions.", firma: "Kind regards," }
+};
+function openMailModal(){
+  const listaId = document.getElementById("t_lista").value;
+  if(!listaId || selectedProductIds.size===0){ showMsg("Elegí una lista y al menos un producto antes de enviar.", "err"); return; }
+  const lista = LISTS.find(l=>l.id===listaId);
+  const idioma = document.getElementById("t_idioma").value;
+  const T = MAIL_TXT[idioma] || MAIL_TXT.es;
+  const brand = BRANDS[CURRENT_BRAND];
+  const cliente = document.getElementById("t_cliente").value.trim();
+  const nombreLista = (idioma==='en' && lista.nombre_lista_en) ? lista.nombre_lista_en : lista.nombre_lista;
+  document.getElementById("m_asunto").value = T.asunto(brand.label, nombreLista);
+  document.getElementById("m_mensaje").value = `${T.saludo(cliente)}\n\n${T.cuerpo}\n\n${T.firma}\n${(BAUER_SESSION && BAUER_SESSION.nombre) || ''}\n${brand.label}`;
+  document.getElementById("m_info").textContent = `Sale desde ${CURRENT_BRAND==='rietmann'?'tarifas@rietmanniberica.com':'tarifas@bocadofoods.com'} con el PDF adjunto. Las respuestas del cliente llegan a tu email.`;
+  document.getElementById("m_enviar").disabled = false;
+  document.getElementById("m_enviar").textContent = "Enviar";
+  document.getElementById("mailModal").classList.add("open");
+  setTimeout(()=>document.getElementById("m_to").focus(), 50);
+}
+function closeMailModal(){ document.getElementById("mailModal").classList.remove("open"); }
+
+async function sendTarifaMail(){
+  const to = document.getElementById("m_to").value.trim();
+  if(!to){ showMsg("Escribí el email del destinatario.", "err"); return; }
+  const btn = document.getElementById("m_enviar");
+  btn.disabled = true; btn.textContent = "Enviando...";
+  try{
+    const result = await prepareCurrentTarifaPDF();
+    if(!result) throw new Error("Elegí una lista y al menos un producto.");
+    const pdf = result.doc.output('datauristring').split(',')[1];
+    let logId = null;
+    try{ logId = await logTarifa(result); }catch(e){ console.warn("No se pudo registrar en bitácora", e); }
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/tarifas-mail`, {
+      method: "POST", headers,
+      body: JSON.stringify({
+        marca: CURRENT_BRAND, to, cc: document.getElementById("m_cc").value.trim(),
+        asunto: document.getElementById("m_asunto").value.trim(),
+        mensaje: document.getElementById("m_mensaje").value,
+        filename: result.filename, pdf, log_id: logId
+      })
     });
-    showMsg("PDF descargado y registrado en la bitácora.");
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok || !d.ok) throw new Error(d.error || ("Error " + r.status));
+    closeMailModal();
+    document.getElementById("m_to").value = ""; document.getElementById("m_cc").value = "";
+    showMsg(`Tarifa enviada a ${to}.` + (logId ? " Quedó registrada en la bitácora." : ""));
   }catch(e){
-    showMsg("El PDF se descargó, pero no se pudo guardar en la bitácora: "+e.message, "err");
+    showMsg("No se pudo enviar: " + e.message, "err");
+    btn.disabled = false; btn.textContent = "Enviar";
   }
 }
 
@@ -1401,7 +1489,9 @@ async function loadBitacora(){
     document.getElementById("bitacoraEmpty").style.display = rows.length ? "none" : "block";
     tbody.innerHTML = rows.map(r=>{
       const fechaGen = new Date(r.created_at).toLocaleString('es-ES', {dateStyle:'short', timeStyle:'short'});
-      const estadoBadge = r.estado === 'aprobado'
+      const estadoBadge = r.estado === 'enviado'
+        ? `<span class="badge enviado">Enviado</span><div style="font-size:11px;color:#666;margin-top:3px;">${r.enviado_a||''}${r.enviado_at?'<br>'+new Date(r.enviado_at).toLocaleString('es-ES',{dateStyle:'short',timeStyle:'short'}):''}</div>`
+        : r.estado === 'aprobado'
         ? `<span class="badge distribuidor">Aprobado</span>`
         : `<span class="badge web">Borrador</span>`;
       return `<tr>
@@ -1413,7 +1503,7 @@ async function loadBitacora(){
         <td style="font-size:11px;color:#888;">${r.filename||''}</td>
         <td style="white-space:nowrap;">
           <button class="btn secondary" onclick="verTarifaLogPDF('${r.id}')">Ver PDF</button>
-          ${r.estado!=='aprobado' ? `<button class="btn secondary" onclick="aprobarTarifa('${r.id}')">Aprobar</button>` : ''}
+          ${(r.estado!=='aprobado' && r.estado!=='enviado') ? `<button class="btn secondary" onclick="aprobarTarifa('${r.id}')">Aprobar</button>` : ''}
           <button class="btn secondary" onclick="eliminarTarifaLog('${r.id}')">Eliminar</button>
         </td>
       </tr>`;
