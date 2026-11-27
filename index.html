@@ -812,7 +812,8 @@ function renderListsTable(){
       <td>${l.incluye_transporte ? 'CIF' : 'EXW'}</td>
       <td>${refRetail ? refRetail.nombre_lista : '—'}</td>
       <td>${refPvp ? refPvp.nombre_lista : '—'}</td>
-      <td><button class="btn secondary" onclick="editList('${l.id}')">Editar</button></td>
+      <td style="white-space:nowrap;"><button class="btn secondary" onclick="editList('${l.id}')">Editar</button>
+        <button class="btn secondary" onclick="deleteList('${l.id}')">Eliminar</button></td>
     </tr>`;
   }).join("");
 }
@@ -833,6 +834,34 @@ function closeListForm(){
   ["l_id","l_numero","l_nombre","l_nombre_en","l_condiciones","l_condiciones_en"].forEach(id=>document.getElementById(id).value="");
   document.getElementById("l_ref_retail").value="";
   document.getElementById("l_ref_pvp").value="";
+}
+
+// Elimina una lista y sus precios. Las tarifas de la bitácora se conservan (quedan desvinculadas)
+// y las listas que la usaban como referencia Retail/PVP quedan sin esa referencia.
+async function deleteList(id){
+  const l = LISTS.find(x=>x.id===id);
+  if(!l) return;
+  let nPrecios = 0;
+  try{ nPrecios = (await sbGet(`pricing_list_items?lista_id=eq.${id}&select=id`)).length; }catch(e){}
+  const refs = LISTS.filter(x=>x.lista_retail_ref_id===id || x.lista_pvp_ref_id===id);
+  let txt = `¿Eliminar la lista "${l.numero_lista ? l.numero_lista+' · ' : ''}${l.nombre_lista}"?\n\n` +
+            `Se borran también sus ${nPrecios} precio(s). Esta acción no se puede deshacer.\n` +
+            `Las tarifas ya generadas en la bitácora se conservan.`;
+  if(refs.length) txt += `\n\nOjo: ${refs.length} lista(s) la usan como referencia Retail/PVP y quedarán sin esa referencia:\n· ` + refs.map(r=>r.nombre_lista).join("\n· ");
+  if(!confirm(txt)) return;
+  const patchWhere = async (table, filtro, body)=>{
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${filtro}`, {method:"PATCH", headers, body: JSON.stringify(body)});
+    if(!r.ok) throw new Error(await r.text());
+  };
+  try{
+    await patchWhere("pricing_tarifa_log", `lista_id=eq.${id}`, {lista_id: null});
+    await patchWhere("pricing_lists", `lista_retail_ref_id=eq.${id}`, {lista_retail_ref_id: null});
+    await patchWhere("pricing_lists", `lista_pvp_ref_id=eq.${id}`, {lista_pvp_ref_id: null});
+    await sbDel("pricing_lists", id);   // los precios de la lista se borran solos (cascade)
+    if(document.getElementById("l_id").value === id) closeListForm();
+    showMsg(`Lista "${l.nombre_lista}" eliminada.`);
+    await loadAll();
+  }catch(e){ showMsg("Error eliminando la lista: "+e.message, "err"); }
 }
 
 function editList(id){
