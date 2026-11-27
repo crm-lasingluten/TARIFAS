@@ -164,7 +164,8 @@
     <button class="tab-btn active" data-tab="productos">Productos</button>
     <button class="tab-btn" data-tab="listas">Listas de Precio</button>
     <button class="tab-btn" data-tab="tarifa">Generar Tarifa</button>
-    <button class="tab-btn" data-tab="calculadora" id="tabCalculadora" style="display:none;">Calculadora de precios</button>
+    <button class="tab-btn" data-tab="costos">Costos</button>
+    <button class="tab-btn" data-tab="calculadora">Calculadora de precios</button>
     <button class="tab-btn" data-tab="comisionista">Agente comercial</button>
     <button class="tab-btn" data-tab="bitacora">Bitácora</button>
   </div>
@@ -334,41 +335,46 @@
     <div id="tarifaPreview"></div>
   </section>
 
-  <!-- ============ PANEL CALCULADORA (solo Rietmann) ============ -->
-  <section class="panel" id="panel-calculadora">
+  <!-- ============ PANEL COSTOS ============ -->
+  <section class="panel" id="panel-costos">
     <div class="card">
       <div class="toolbar">
-        <h3>1 · Costos adicionales</h3>
+        <h3>1 · Costos generales</h3>
         <button class="btn" onclick="saveCostParams()">Guardar costos</button>
       </div>
-      <p style="font-size:12px;color:#888;margin-bottom:10px;">Actualizá los valores cuando cambien. Cada costo se pasa a €/kg según la regla indicada.</p>
+      <p style="font-size:12px;color:#888;margin-bottom:10px;">Valores iguales para todos los productos. Actualizalos cuando cambien; cada uno se pasa a <span class="unidad-lbl">€/kg</span> según la regla indicada.</p>
       <table>
-        <thead><tr><th>Costo</th><th>Valor (€)</th><th>Cómo se pasa a €/kg</th><th>Última actualización</th></tr></thead>
+        <thead><tr><th>Costo</th><th>Valor (€)</th><th>Cómo se pasa a <span class="unidad-lbl">€/kg</span></th><th>Última actualización</th></tr></thead>
         <tbody id="costParamsBody"></tbody>
       </table>
     </div>
 
     <div class="card">
       <div class="toolbar">
-        <h3>2 · Precio de costo por producto</h3>
-        <button class="btn" onclick="saveCostPrices()">Guardar precios de costo</button>
+        <h3>2 · Costos por producto</h3>
+        <button class="btn" onclick="saveCostPrices()">Guardar costos por producto</button>
       </div>
-      <p style="font-size:12px;color:#888;margin-bottom:10px;">Precio de costo en €/kg. Los kilos por saco salen de "Presentación (kg)" y los sacos por pallet de "Un/pallet" de cada producto.</p>
-      <table>
-        <thead><tr><th>Código</th><th>Producto</th><th>Kg/saco</th><th>Sacos/pallet</th><th>Kg/pallet</th><th>Precio costo (€/kg)</th></tr></thead>
-        <tbody id="costPricesBody"></tbody>
-      </table>
+      <p style="font-size:12px;color:#888;margin-bottom:10px;" id="costPricesHelp"></p>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead id="costPricesHead"></thead>
+          <tbody id="costPricesBody"></tbody>
+        </table>
+      </div>
     </div>
+  </section>
 
+  <!-- ============ PANEL CALCULADORA DE PRECIOS ============ -->
+  <section class="panel" id="panel-calculadora">
     <div class="card">
-      <h3 style="margin-bottom:10px;">3 · Calcular precios</h3>
+      <h3 style="margin-bottom:10px;">1 · Calcular precios</h3>
       <div class="row">
         <div class="field"><label>Margen %</label><input id="calc_margen" type="number" step="0.1" min="0" max="99" value="25" style="width:90px;" oninput="renderCalcPreview()"></div>
         <div class="field" style="flex:1;min-width:300px;"><label>Costos a sumar</label>
           <div id="calcCostChecks" style="display:flex;flex-wrap:wrap;gap:14px;padding:8px 0;font-size:13px;"></div>
         </div>
       </div>
-      <p style="font-size:12px;color:#888;margin:6px 0 12px;">Precio €/kg = precio costo ÷ (1 − margen) + costos elegidos (€/kg). Solo se muestran productos con precio de costo; marcá los que van en la lista.</p>
+      <p style="font-size:12px;color:#888;margin:6px 0 12px;">Precio <span class="unidad-lbl">€/kg</span> = precio costo ÷ (1 − margen) + costos elegidos (<span class="unidad-lbl">€/kg</span>). Solo se muestran productos con precio de costo (se cargan en la pestaña "Costos"); marcá los que van en la lista.</p>
       <div class="row" style="margin-bottom:10px;">
         <button class="btn secondary" onclick="calcSelectAll(true)">Seleccionar todos</button>
         <button class="btn secondary" onclick="calcSelectAll(false)">Deseleccionar todos</button>
@@ -383,7 +389,7 @@
     </div>
 
     <div class="card">
-      <h3 style="margin-bottom:10px;">4 · Guardar como lista de precio</h3>
+      <h3 style="margin-bottom:10px;">2 · Guardar como lista de precio</h3>
       <div class="row">
         <div class="field"><label>Guardar en</label>
           <select id="calc_destino" onchange="onCalcDestinoChange()" style="width:300px;"></select>
@@ -533,13 +539,6 @@ function applyBrandStyle(){
     btn.classList.toggle('active', btn.dataset.brand === CURRENT_BRAND);
   });
   fillTipoSelects();
-  // La calculadora de precios por costos es solo para Rietmann
-  const tabCalc = document.getElementById("tabCalculadora");
-  const esRietmann = CURRENT_BRAND === 'rietmann';
-  tabCalc.style.display = esRietmann ? '' : 'none';
-  if(!esRietmann && tabCalc.classList.contains('active')){
-    document.querySelector('.tab-btn[data-tab="productos"]').click();
-  }
 }
 
 function selectBrand(brand){
@@ -695,7 +694,7 @@ document.querySelectorAll(".tab-btn").forEach(btn=>{
     btn.classList.add("active");
     document.getElementById("panel-"+btn.dataset.tab).classList.add("active");
     if(btn.dataset.tab==="tarifa") renderTarifaPicker();
-    if(btn.dataset.tab==="calculadora") loadCalculadora();
+    if(btn.dataset.tab==="calculadora" || btn.dataset.tab==="costos") loadCalculadora();
     if(btn.dataset.tab==="comisionista") renderComisionPicker();
     if(btn.dataset.tab==="bitacora") loadBitacora();
   });
@@ -714,7 +713,7 @@ async function loadAll(){
     fillListSelects();
     document.getElementById("productsEmpty").style.display = PRODUCTS.length ? "none" : "block";
     document.getElementById("listsEmpty").style.display = LISTS.length ? "none" : "block";
-    if(document.getElementById("panel-calculadora").classList.contains("active")) await loadCalculadora();
+    if(document.getElementById("panel-calculadora").classList.contains("active") || document.getElementById("panel-costos").classList.contains("active")) await loadCalculadora();
     await onTarifaListaChange();
     if(document.getElementById("panel-comisionista").classList.contains("active")) renderComisionPicker();
   }catch(e){
@@ -1055,10 +1054,12 @@ async function renderListaInfo(){
   if(!COST_PARAMS.length || COST_PARAMS[0].business_line !== CURRENT_BRAND){
     try{ COST_PARAMS = await sbGet(`pricing_cost_params?business_line=eq.${CURRENT_BRAND}&order=orden.asc`); }catch(e){}
   }
-  const unidad = {pallet:"€/pallet", kilo:"€/kg", caja:"€/caja"};
+  const unidad = {pallet:"€/pallet", kilo:"€/kg", unidad:"€/unidad", caja:"€/caja"};
   const costos = (lista.calc_costos||[]).map(k=>{
     const c = COST_PARAMS.find(x=>x.clave===k);
-    return c ? `${c.nombre}: ${Number(c.valor).toLocaleString('es-ES',{minimumFractionDigits:2})} ${unidad[c.base]||''}` : k;
+    if(!c) return k;
+    if(c.scope==='producto') return `${c.nombre}: valor por producto`;
+    return `${c.nombre}: ${Number(c.valor).toLocaleString('es-ES',{minimumFractionDigits:2})} ${unidad[c.base]||''}`;
   });
   box.innerHTML = `<b>Margen:</b> ${Number(lista.calc_margen).toLocaleString('es-ES')} %<br>` +
     `<b>Costos adicionales:</b> ${costos.length ? '<br>· ' + costos.join('<br>· ') : 'ninguno'}`;
@@ -1769,15 +1770,22 @@ async function viewComisionPDF(){
 }
 
 // ======================================================================
-// CALCULADORA DE PRECIOS POR COSTOS (Rietmann)
-// Precio €/kg = costo ÷ (1 − margen) + costos adicionales elegidos (€/kg)
+// CALCULADORA DE PRECIOS POR COSTOS (Rietmann por kg, Bocado por unidad)
+// Precio = costo ÷ (1 − margen) + costos adicionales elegidos (pasados a €/kg o €/unidad)
+// Costos "global": un valor para todos (pricing_cost_params.valor)
+// Costos "producto": un valor por producto (pricing_product_costs), con nota opcional
 // ======================================================================
 let COST_PARAMS = [];
-const COST_BASE_TXT = {
-  pallet: "€ por pallet ÷ kilos del pallet",
-  kilo:   "€ por kilo (promedio), se suma directo",
-  caja:   "€ por caja ÷ kilos del saco"
+let PROD_COSTS = {}; // producto_id -> { clave: {valor, nota} }
+const esRiet = () => CURRENT_BRAND === 'rietmann';
+const unidadTxt = () => esRiet() ? '€/kg' : '€/unidad';
+const COST_BASE_TXT_BRAND = {
+  rietmann: { pallet: "€ por pallet ÷ kilos del pallet", kilo: "€ por kilo, se suma directo", unidad: "€ por kilo, se suma directo", caja: "€ por caja ÷ kilos del saco" },
+  bocado:   { pallet: "€ por pallet ÷ unidades del pallet", kilo: "€ por unidad, se suma directo", unidad: "€ por unidad, se suma directo", caja: "€ por caja ÷ unidades de la caja" }
 };
+const baseTxt = b => (COST_BASE_TXT_BRAND[CURRENT_BRAND] || COST_BASE_TXT_BRAND.bocado)[b] || '';
+const globalParams = () => COST_PARAMS.filter(c=>c.scope!=='producto');
+const productParams = () => COST_PARAMS.filter(c=>c.scope==='producto');
 
 // "20 Kg." / "15kg" / "0,5 Kg" → número
 function kgSaco(p){
@@ -1786,12 +1794,27 @@ function kgSaco(p){
 }
 function kgPallet(p){ return kgSaco(p) * (Number(p.unidades_pallet)||0); }
 
-// Costo adicional en €/kg para un producto
-function costoPorKg(param, p){
-  const v = Number(param.valor)||0;
-  if(param.base === 'kilo') return v;
-  if(param.base === 'pallet'){ const kp = kgPallet(p); return kp>0 ? v/kp : null; }
-  if(param.base === 'caja'){ const ks = kgSaco(p); return ks>0 ? v/ks : null; }
+// Divisores según la marca: Rietmann reparte en kilos, Bocado en unidades
+function divPallet(p){ return esRiet() ? kgPallet(p) : (Number(p.unidades_pallet)||0); }
+function divCaja(p){ return esRiet() ? kgSaco(p) : (Number(p.unidades_caja)||0); }
+
+// Valor escrito en pantalla para un costo por producto (o el guardado)
+function currentProdCost(p, clave){
+  const el = document.getElementById(`ppc_${p.id}_${clave}`);
+  const v = el ? el.value : (PROD_COSTS[p.id] && PROD_COSTS[p.id][clave] ? PROD_COSTS[p.id][clave].valor : null);
+  return (v===''||v===null||v===undefined) ? null : Number(v);
+}
+function currentProdNota(p, clave){
+  const el = document.getElementById(`ppn_${p.id}_${clave}`);
+  return el ? el.value.trim() : ((PROD_COSTS[p.id] && PROD_COSTS[p.id][clave] && PROD_COSTS[p.id][clave].nota) || '');
+}
+
+// Costo adicional pasado a €/kg (Rietmann) o €/unidad (Bocado). null = falta dato para repartir
+function costoPorUnidad(param, p){
+  const v = param.scope==='producto' ? (currentProdCost(p, param.clave) || 0) : (Number(param.valor)||0);
+  if(param.base === 'kilo' || param.base === 'unidad') return v;
+  if(param.base === 'pallet'){ const d = divPallet(p); return d>0 ? v/d : (v ? null : 0); }
+  if(param.base === 'caja'){ const d = divCaja(p); return d>0 ? v/d : (v ? null : 0); }
   return 0;
 }
 
@@ -1799,24 +1822,49 @@ async function loadCalculadora(){
   try{
     COST_PARAMS = await sbGet(`pricing_cost_params?business_line=eq.${CURRENT_BRAND}&order=orden.asc`);
   }catch(e){ showMsg("Error cargando costos: "+e.message, "err"); COST_PARAMS = []; }
+  const activos = PRODUCTS.filter(p=>p.activo);
+  PROD_COSTS = {};
+  if(productParams().length && activos.length){
+    try{
+      const rows = await sbGet(`pricing_product_costs?producto_id=in.(${activos.map(p=>p.id).join(',')})`);
+      rows.forEach(r=>{ (PROD_COSTS[r.producto_id] = PROD_COSTS[r.producto_id] || {})[r.clave] = {valor: r.valor, nota: r.nota}; });
+    }catch(e){ showMsg("Error cargando costos por producto: "+e.message, "err"); }
+  }
+  document.querySelectorAll(".unidad-lbl").forEach(el=>el.textContent = unidadTxt());
 
-  document.getElementById("costParamsBody").innerHTML = COST_PARAMS.map(c=>`
+  const gp = globalParams();
+  document.getElementById("costParamsBody").innerHTML = gp.length ? gp.map(c=>`
     <tr>
       <td>${c.nombre}</td>
       <td><input type="number" step="0.01" id="cp_${c.id}" value="${c.valor ?? 0}" style="width:110px;" oninput="renderCalcPreview()"></td>
-      <td style="font-size:12px;color:#666;">${COST_BASE_TXT[c.base]||''}</td>
+      <td style="font-size:12px;color:#666;">${baseTxt(c.base)}</td>
       <td style="font-size:12px;color:#888;">${c.updated_at ? new Date(c.updated_at).toLocaleString('es-ES',{dateStyle:'short',timeStyle:'short'}) : ''}</td>
-    </tr>`).join("");
+    </tr>`).join("") : `<tr><td colspan="4" style="color:#999;text-align:center;">No hay costos generales para esta marca.</td></tr>`;
 
-  const activos = PRODUCTS.filter(p=>p.activo);
+  const pp = productParams();
+  const warn = '<span style="color:#a4302a;">revisar</span>';
+  document.getElementById("costPricesHelp").textContent = esRiet()
+    ? 'Precio de costo en €/kg. Los kilos por saco salen de "Presentación (kg)" y los sacos por pallet de "Un/pallet" de cada producto.'
+    : 'Precio de costo y costos en € por unidad (la caja en € por caja). Las unidades por caja y por pallet salen de cada producto. En GLS y Otros costos podés anotar cómo hiciste el cálculo.';
+  document.getElementById("costPricesHead").innerHTML = `<tr>
+    <th>Código</th><th>Producto</th>
+    ${esRiet() ? '<th>Kg/saco</th><th>Sacos/pallet</th><th>Kg/pallet</th>' : '<th>Un/caja</th><th>Un/pallet</th>'}
+    <th>Precio costo (${unidadTxt()})</th>
+    ${pp.map(c=>`<th>${c.nombre}<br><span style="font-weight:400;text-transform:none;">${c.base==='caja'?'€/caja':unidadTxt()}</span></th>`).join("")}
+  </tr>`;
+  const inp = (id, val, w, extra='') => `<input type="number" step="0.0001" id="${id}" value="${val ?? ''}" style="width:${w}px;" oninput="renderCalcPreview()" ${extra}>`;
   document.getElementById("costPricesBody").innerHTML = activos.map(p=>`
     <tr>
       <td>${p.codigo_producto}</td>
       <td>${p.nombre_producto}</td>
-      <td>${kgSaco(p) || '<span style="color:#a4302a;">revisar</span>'}</td>
-      <td>${p.unidades_pallet ? Number(p.unidades_pallet) : '<span style="color:#a4302a;">revisar</span>'}</td>
-      <td>${kgPallet(p) || '—'}</td>
-      <td><input type="number" step="0.0001" id="pc_${p.id}" value="${p.precio_costo ?? ''}" style="width:110px;" oninput="renderCalcPreview()"></td>
+      ${esRiet()
+        ? `<td>${kgSaco(p) || warn}</td><td>${p.unidades_pallet ? Number(p.unidades_pallet) : warn}</td><td>${kgPallet(p) || '—'}</td>`
+        : `<td>${p.unidades_caja ? Number(p.unidades_caja) : warn}</td><td>${p.unidades_pallet ? Number(p.unidades_pallet) : warn}</td>`}
+      <td>${inp(`pc_${p.id}`, p.precio_costo, 95)}</td>
+      ${pp.map(c=>{
+        const pc = (PROD_COSTS[p.id]||{})[c.clave] || {};
+        return `<td style="vertical-align:top;">${inp(`ppc_${p.id}_${c.clave}`, pc.valor, 80)}${c.con_nota ? `<br><input type="text" id="ppn_${p.id}_${c.clave}" value="${(pc.nota||'').replace(/"/g,'&quot;')}" placeholder="cálculo..." style="width:130px;margin-top:4px;font-size:11px;padding:5px 6px;">` : ''}</td>`;
+      }).join("")}
     </tr>`).join("");
 
   document.getElementById("calcCostChecks").innerHTML = COST_PARAMS.map(c=>`
@@ -1874,7 +1922,7 @@ function calcRows(){
     const costo = currentCostPrice(p);
     if(margen>=100) return {p, costo, extras:[], precio:null};
     const conMargen = costo / (1 - margen/100);
-    const extras = params.map(c=>costoPorKg(c, p));
+    const extras = params.map(c=>costoPorUnidad(c, p));
     const faltaDato = extras.some(x=>x===null);
     const precio = faltaDato ? null : conMargen + extras.reduce((a,b)=>a+b,0);
     return {p, costo, conMargen, extras, precio, faltaDato};
@@ -1885,9 +1933,9 @@ function renderCalcPreview(){
   const params = currentCostParams().filter(c=>selectedCostKeys().includes(c.clave));
   const margen = Number(document.getElementById("calc_margen").value)||0;
   document.getElementById("calcPreviewHead").innerHTML = `<tr>
-    <th class="checkbox-cell">Incluir</th><th>Código</th><th>Producto</th><th>Costo €/kg</th><th>Con margen ${margen}%</th>
-    ${params.map(c=>`<th>${c.nombre} (€/kg)</th>`).join("")}
-    <th>Precio €/kg</th></tr>`;
+    <th class="checkbox-cell">Incluir</th><th>Código</th><th>Producto</th><th>Costo ${unidadTxt()}</th><th>Con margen ${margen}%</th>
+    ${params.map(c=>`<th>${c.nombre} (${unidadTxt()})</th>`).join("")}
+    <th>Precio ${unidadTxt()}</th></tr>`;
   const f = n => n===null||n===undefined ? '—' : n.toFixed(4).replace(/0{1,2}$/,'');
   const rows = calcRows();
   document.getElementById("calcPreviewBody").innerHTML = rows.length ? rows.map(r=>{
@@ -1895,10 +1943,10 @@ function renderCalcPreview(){
       <td class="checkbox-cell"><input type="checkbox" class="calc-prod-chk" ${calcExcluded.has(r.p.id)?'':'checked'} onchange="calcToggle('${r.p.id}', this.checked)"></td>
       <td>${r.p.codigo_producto}</td><td>${r.p.nombre_producto}</td>
       <td>${f(r.costo)}</td><td>${f(r.conMargen)}</td>
-      ${r.extras.map(x=>`<td>${x===null?'<span style="color:#a4302a;">falta kg</span>':f(x)}</td>`).join("")}
+      ${r.extras.map(x=>`<td>${x===null?`<span style="color:#a4302a;">${esRiet()?'falta kg':'faltan unidades'}</span>`:f(x)}</td>`).join("")}
       <td style="font-weight:600;">${r.precio===null?'—':r.precio.toFixed(2)+' €'}</td>
     </tr>`;
-  }).join("") : `<tr><td colspan="${5+params.length}" style="text-align:center;color:#999;">Ningún producto tiene precio de costo todavía. Cargalo en el bloque 2.</td></tr>`;
+  }).join("") : `<tr><td colspan="${5+params.length}" style="text-align:center;color:#999;">Ningún producto tiene precio de costo todavía. Cargalo en la pestaña "Costos".</td></tr>`;
   updateCalcSelCount();
 }
 
@@ -1922,6 +1970,33 @@ async function persistCostPrices(){
   }
   return n;
 }
+// Guarda los costos por producto que cambiaron (upsert por producto + costo)
+async function persistProductCosts(){
+  const pp = productParams();
+  if(!pp.length) return 0;
+  const cambios = [];
+  for(const p of PRODUCTS.filter(x=>x.activo)){
+    for(const c of pp){
+      const v = currentProdCost(p, c.clave);
+      const nota = c.con_nota ? currentProdNota(p, c.clave) : null;
+      const orig = (PROD_COSTS[p.id]||{})[c.clave] || {};
+      const vOrig = (orig.valor===null||orig.valor===undefined) ? null : Number(orig.valor);
+      if(v !== vOrig || (c.con_nota && (nota||'') !== (orig.nota||''))){
+        cambios.push({producto_id: p.id, clave: c.clave, valor: v, nota: nota || null, updated_at: new Date().toISOString()});
+      }
+    }
+  }
+  if(!cambios.length) return 0;
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/pricing_product_costs?on_conflict=producto_id,clave`, {
+    method: "POST",
+    headers: Object.assign({}, headers, {"Prefer": "resolution=merge-duplicates,return=representation"}),
+    body: JSON.stringify(cambios)
+  });
+  if(!r.ok) throw new Error(await r.text());
+  cambios.forEach(ch=>{ (PROD_COSTS[ch.producto_id] = PROD_COSTS[ch.producto_id] || {})[ch.clave] = {valor: ch.valor, nota: ch.nota}; });
+  return cambios.length;
+}
+
 async function saveCostParams(){
   try{
     await persistCostParams();
@@ -1933,7 +2008,8 @@ async function saveCostParams(){
 async function saveCostPrices(){
   try{
     const n = await persistCostPrices();
-    showMsg(n ? `Precio de costo guardado en ${n} producto(s).` : "No había cambios para guardar.");
+    const m = await persistProductCosts();
+    showMsg((n || m) ? `Costos guardados (${n} precio(s) de costo, ${m} costo(s) por producto).` : "No había cambios para guardar.");
   }catch(e){ showMsg("Error guardando precios de costo: "+e.message, "err"); }
 }
 
@@ -1986,6 +2062,7 @@ async function saveCalcAsList(){
     // guarda también costos y precios de costo escritos en pantalla, para que la lista coincida con lo guardado
     await persistCostParams();
     await persistCostPrices();
+    await persistProductCosts();
     let listaId = destinoId;
     if(destinoId){
       await sbPatch("pricing_lists", destinoId, listaBody);
