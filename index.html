@@ -344,7 +344,7 @@
       </div>
       <p style="font-size:12px;color:#888;margin-bottom:10px;">Valores iguales para todos los productos. Actualizalos cuando cambien; cada uno se pasa a <span class="unidad-lbl">€/kg</span> según la regla indicada.</p>
       <table>
-        <thead><tr><th>Costo</th><th>Valor (€)</th><th>Cómo se pasa a <span class="unidad-lbl">€/kg</span></th><th>Última actualización</th></tr></thead>
+        <thead><tr><th>Costo</th><th>Valor (€) / cálculo</th><th>Cómo se pasa a <span class="unidad-lbl">€/kg</span></th><th>Última actualización</th></tr></thead>
         <tbody id="costParamsBody"></tbody>
       </table>
     </div>
@@ -1837,7 +1837,7 @@ async function loadCalculadora(){
   document.getElementById("costParamsBody").innerHTML = gp.length ? gp.map(c=>`
     <tr>
       <td>${c.nombre}</td>
-      <td><input type="number" step="0.01" id="cp_${c.id}" value="${c.valor ?? 0}" style="width:110px;" oninput="renderCalcPreview()"></td>
+      <td><input type="number" step="0.0001" id="cp_${c.id}" value="${c.valor ?? 0}" style="width:110px;" oninput="renderCalcPreview()">${c.con_nota ? `<br><input type="text" id="cpn_${c.id}" value="${(c.nota||'').replace(/"/g,'&quot;')}" placeholder="cómo se calculó..." style="width:260px;margin-top:4px;font-size:12px;padding:5px 7px;">` : ''}</td>
       <td style="font-size:12px;color:#666;">${baseTxt(c.base)}</td>
       <td style="font-size:12px;color:#888;">${c.updated_at ? new Date(c.updated_at).toLocaleString('es-ES',{dateStyle:'short',timeStyle:'short'}) : ''}</td>
     </tr>`).join("") : `<tr><td colspan="4" style="color:#999;text-align:center;">No hay costos generales para esta marca.</td></tr>`;
@@ -1846,7 +1846,7 @@ async function loadCalculadora(){
   const warn = '<span style="color:#a4302a;">revisar</span>';
   document.getElementById("costPricesHelp").textContent = esRiet()
     ? 'Precio de costo en €/kg. Los kilos por saco salen de "Presentación (kg)" y los sacos por pallet de "Un/pallet" de cada producto.'
-    : 'Precio de costo y costos en € por unidad (la caja en € por caja). Las unidades por caja y por pallet salen de cada producto. En GLS y Otros costos podés anotar cómo hiciste el cálculo.';
+    : 'Precio de costo y etiqueta en € por unidad. Las unidades por caja y por pallet salen de cada producto y se usan para repartir los costos por pallet y por caja.';
   document.getElementById("costPricesHead").innerHTML = `<tr>
     <th>Código</th><th>Producto</th>
     ${esRiet() ? '<th>Kg/saco</th><th>Sacos/pallet</th><th>Kg/pallet</th>' : '<th>Un/caja</th><th>Un/pallet</th>'}
@@ -1885,7 +1885,8 @@ async function loadCalculadora(){
 function currentCostParams(){
   return COST_PARAMS.map(c=>{
     const el = document.getElementById(`cp_${c.id}`);
-    return Object.assign({}, c, {valor: el ? Number(el.value)||0 : Number(c.valor)||0});
+    const nt = document.getElementById(`cpn_${c.id}`);
+    return Object.assign({}, c, {valor: el ? Number(el.value)||0 : Number(c.valor)||0, nota: nt ? nt.value.trim() : (c.nota||'')});
   });
 }
 function currentCostPrice(p){
@@ -1967,8 +1968,8 @@ function renderCalcPreview(){
 async function persistCostParams(){
   for(const c of currentCostParams()){
     const orig = COST_PARAMS.find(x=>x.id===c.id);
-    if(Number(orig.valor) !== c.valor){
-      await sbPatch("pricing_cost_params", c.id, {valor: c.valor, updated_at: new Date().toISOString()});
+    if(Number(orig.valor) !== c.valor || (c.con_nota && (orig.nota||'') !== (c.nota||''))){
+      await sbPatch("pricing_cost_params", c.id, {valor: c.valor, nota: c.con_nota ? (c.nota || null) : orig.nota, updated_at: new Date().toISOString()});
     }
   }
 }
