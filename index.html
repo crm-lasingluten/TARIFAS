@@ -1061,7 +1061,8 @@ async function renderListaInfo(){
     if(c.scope==='producto') return `${c.nombre}: valor por producto`;
     return `${c.nombre}: ${Number(c.valor).toLocaleString('es-ES',{minimumFractionDigits:2})} ${unidad[c.base]||''}`;
   });
-  box.innerHTML = `<b>Margen:</b> ${Number(lista.calc_margen).toLocaleString('es-ES')} %<br>` +
+  const propios = Object.keys(lista.calc_margenes || {}).length;
+  box.innerHTML = `<b>Margen:</b> ${Number(lista.calc_margen).toLocaleString('es-ES')} %${propios ? ` (general; ${propios} producto${propios>1?'s':''} con margen propio)` : ''}<br>` +
     `<b>Costos adicionales:</b> ${costos.length ? '<br>· ' + costos.join('<br>· ') : 'ninguno'}`;
   box.style.display = "block";
 }
@@ -1915,17 +1916,28 @@ function updateCalcSelCount(){
   if(el) el.textContent = `${sel} de ${rows.length} productos seleccionados`;
 }
 
+// Margen propio por producto (si se tocó a mano). Si no, usa el margen general.
+let calcMargins = {}; // producto_id -> margen %
+function margenGeneral(){ return Number(document.getElementById("calc_margen").value)||0; }
+function margenDe(p){ return calcMargins[p.id]!==undefined ? calcMargins[p.id] : margenGeneral(); }
+function setCalcMargin(id, val){
+  const v = Number(String(val).replace(',', '.'));
+  if(val==='' || isNaN(v) || v===margenGeneral()) delete calcMargins[id];
+  else calcMargins[id] = v;
+  renderCalcPreview();
+}
+
 function calcRows(){
-  const margen = Number(document.getElementById("calc_margen").value)||0;
   const params = currentCostParams().filter(c=>selectedCostKeys().includes(c.clave));
   return PRODUCTS.filter(p=>p.activo && currentCostPrice(p)!==null).map(p=>{
     const costo = currentCostPrice(p);
-    if(margen>=100) return {p, costo, extras:[], precio:null};
+    const margen = margenDe(p);
+    if(!(margen>=0 && margen<100)) return {p, costo, margen, extras:[], precio:null};
     const conMargen = costo / (1 - margen/100);
     const extras = params.map(c=>costoPorUnidad(c, p));
     const faltaDato = extras.some(x=>x===null);
     const precio = faltaDato ? null : conMargen + extras.reduce((a,b)=>a+b,0);
-    return {p, costo, conMargen, extras, precio, faltaDato};
+    return {p, costo, margen, conMargen, extras, precio, faltaDato};
   });
 }
 
@@ -1933,7 +1945,7 @@ function renderCalcPreview(){
   const params = currentCostParams().filter(c=>selectedCostKeys().includes(c.clave));
   const margen = Number(document.getElementById("calc_margen").value)||0;
   document.getElementById("calcPreviewHead").innerHTML = `<tr>
-    <th class="checkbox-cell">Incluir</th><th>Código</th><th>Producto</th><th>Costo ${unidadTxt()}</th><th>Con margen ${margen}%</th>
+    <th class="checkbox-cell">Incluir</th><th>Código</th><th>Producto</th><th>Costo ${unidadTxt()}</th><th>Margen %</th><th>Con margen</th>
     ${params.map(c=>`<th>${c.nombre} (${unidadTxt()})</th>`).join("")}
     <th>Precio ${unidadTxt()}</th></tr>`;
   const f = n => n===null||n===undefined ? '—' : n.toFixed(4).replace(/0{1,2}$/,'');
@@ -1942,11 +1954,13 @@ function renderCalcPreview(){
     return `<tr>
       <td class="checkbox-cell"><input type="checkbox" class="calc-prod-chk" ${calcExcluded.has(r.p.id)?'':'checked'} onchange="calcToggle('${r.p.id}', this.checked)"></td>
       <td>${r.p.codigo_producto}</td><td>${r.p.nombre_producto}</td>
-      <td>${f(r.costo)}</td><td>${f(r.conMargen)}</td>
+      <td>${f(r.costo)}</td>
+      <td style="white-space:nowrap;"><input type="number" step="0.1" min="0" max="99" value="${r.margen}" onchange="setCalcMargin('${r.p.id}', this.value)" title="${calcMargins[r.p.id]!==undefined?'Margen propio de este producto':'Margen general'}" style="width:70px;${calcMargins[r.p.id]!==undefined?'background:#fff3cd;font-weight:600;border-color:#e0b84c;':''}">${calcMargins[r.p.id]!==undefined?` <button type="button" class="btn secondary" style="padding:4px 7px;font-size:11px;" title="Volver al margen general" onclick="setCalcMargin('${r.p.id}','')">↺</button>`:''}</td>
+      <td>${f(r.conMargen)}</td>
       ${r.extras.map(x=>`<td>${x===null?`<span style="color:#a4302a;">${esRiet()?'falta kg':'faltan unidades'}</span>`:f(x)}</td>`).join("")}
       <td style="font-weight:600;">${r.precio===null?'—':r.precio.toFixed(2)+' €'}</td>
     </tr>`;
-  }).join("") : `<tr><td colspan="${5+params.length}" style="text-align:center;color:#999;">Ningún producto tiene precio de costo todavía. Cargalo en la pestaña "Costos".</td></tr>`;
+  }).join("") : `<tr><td colspan="${6+params.length}" style="text-align:center;color:#999;">Ningún producto tiene precio de costo todavía. Cargalo en la pestaña "Costos".</td></tr>`;
   updateCalcSelCount();
 }
 
@@ -2023,6 +2037,7 @@ async function onCalcDestinoChange(){
   document.getElementById("calc_condiciones").value = l ? (l.condiciones_texto||'') : '';
   if(l){
     document.getElementById("calc_margen").value = l.calc_margen;
+    calcMargins = Object.assign({}, l.calc_margenes || {});
     document.querySelectorAll(".calc-cost-chk").forEach(cb=>cb.checked = (l.calc_costos||[]).includes(cb.value));
     // marca solo los productos que ya están en esa lista
     try{
@@ -2032,6 +2047,7 @@ async function onCalcDestinoChange(){
     }catch(e){}
   }else{
     calcExcluded = new Set();
+    calcMargins = {};
   }
   renderCalcPreview();
 }
@@ -2055,6 +2071,7 @@ async function saveCalcAsList(){
     incluye_transporte: document.getElementById("calc_transporte").value === "true",
     condiciones_texto: document.getElementById("calc_condiciones").value.trim(),
     calc_margen: margen,
+    calc_margenes: Object.fromEntries(rows.filter(r=>calcMargins[r.p.id]!==undefined).map(r=>[r.p.id, calcMargins[r.p.id]])),
     calc_costos: selectedCostKeys(),
     updated_at: new Date().toISOString()
   };
