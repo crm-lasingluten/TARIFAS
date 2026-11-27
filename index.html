@@ -125,6 +125,8 @@
   .modal .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
   .modal .hint{font-size:11px;color:#888;margin-top:2px;}
   .badge.enviado{background:#2e7d5b;}
+  .modo-opt{display:flex;align-items:center;gap:6px;padding:7px 12px;border:1.5px solid var(--line);border-radius:3px;cursor:pointer;font-family:'Oswald',sans-serif;font-size:12px;letter-spacing:.05em;}
+  .modo-opt:has(input:checked){border-color:var(--accent);background:var(--accent-dim);font-weight:600;}
 </style>
 </head>
 <body>
@@ -370,6 +372,12 @@
       <h3 style="margin-bottom:10px;">1 · Calcular precios</h3>
       <div class="row">
         <div class="field"><label>Margen %</label><input id="calc_margen" type="number" step="0.1" min="0" max="99" value="25" style="width:90px;" oninput="renderCalcPreview()"></div>
+        <div class="field" id="calcModoBox" style="display:none;"><label>Tipo de producto</label>
+          <div style="display:flex;gap:6px;padding:4px 0;">
+            <label class="modo-opt"><input type="radio" name="calc_modo" value="etiquetado" onchange="setModoEtiqueta(this.value)" checked> ETIQUETADO</label>
+            <label class="modo-opt"><input type="radio" name="calc_modo" value="private_label" onchange="setModoEtiqueta(this.value)"> PRIVATE LABEL</label>
+          </div>
+        </div>
         <div class="field" style="flex:1;min-width:300px;"><label>Costos a sumar</label>
           <div id="calcCostChecks" style="display:flex;flex-wrap:wrap;gap:14px;padding:8px 0;font-size:13px;"></div>
         </div>
@@ -1091,7 +1099,8 @@ async function renderListaInfo(){
     return `${c.nombre}: ${Number(c.valor).toLocaleString('es-ES',{minimumFractionDigits:2})} ${unidad[c.base]||''}`;
   });
   const propios = Object.keys(lista.calc_margenes || {}).length;
-  box.innerHTML = `<b>Margen:</b> ${Number(lista.calc_margen).toLocaleString('es-ES')} %${propios ? ` (general; ${propios} producto${propios>1?'s':''} con margen propio)` : ''}<br>` +
+  const modoTxt = COST_PARAMS.some(c=>c.clave==='etiqueta') ? `<b>Tipo:</b> ${(lista.calc_costos||[]).includes('etiqueta') ? 'Etiquetado' : 'Private Label (sin costo de etiqueta)'}<br>` : '';
+  box.innerHTML = modoTxt + `<b>Margen:</b> ${Number(lista.calc_margen).toLocaleString('es-ES')} %${propios ? ` (general; ${propios} producto${propios>1?'s':''} con margen propio)` : ''}<br>` +
     `<b>Costos adicionales:</b> ${costos.length ? '<br>· ' + costos.join('<br>· ') : 'ninguno'}`;
   box.style.display = "block";
 }
@@ -1901,6 +1910,10 @@ async function loadCalculadora(){
     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
       <input type="checkbox" class="calc-cost-chk" value="${c.clave}" onchange="renderCalcPreview()"> ${c.nombre}
     </label>`).join("");
+  // Bocado: Etiquetado / Private Label decide si se suma la etiqueta
+  const hayEtiqueta = COST_PARAMS.some(c=>c.clave==='etiqueta');
+  document.getElementById("calcModoBox").style.display = hayEtiqueta ? '' : 'none';
+  if(hayEtiqueta) setModoEtiqueta(document.querySelector('input[name="calc_modo"]:checked')?.value || 'etiquetado', true);
 
   const calcLists = LISTS.filter(l=>l.calc_margen!==null && l.calc_margen!==undefined);
   document.getElementById("calc_destino").innerHTML =
@@ -1944,6 +1957,24 @@ function updateCalcSelCount(){
   const sel = rows.filter(r=>!calcExcluded.has(r.p.id)).length;
   const el = document.getElementById("calcSelCount");
   if(el) el.textContent = `${sel} de ${rows.length} productos seleccionados`;
+}
+
+// Etiquetado: suma el costo de etiqueta. Private Label: no lo suma (y la casilla queda bloqueada).
+function setModoEtiqueta(modo, sinRender){
+  const radio = document.querySelector(`input[name="calc_modo"][value="${modo}"]`);
+  if(radio) radio.checked = true;
+  const cb = document.querySelector('.calc-cost-chk[value="etiqueta"]');
+  if(cb){
+    cb.checked = (modo === 'etiquetado');
+    cb.disabled = true;
+    cb.parentElement.style.opacity = '.6';
+    cb.parentElement.title = modo === 'etiquetado' ? 'Se suma porque elegiste ETIQUETADO' : 'No se suma porque elegiste PRIVATE LABEL';
+  }
+  if(modo === 'private_label' && document.getElementById("calc_destino").value === ''){
+    const tipo = document.getElementById("calc_tipo");
+    if([...tipo.options].some(o=>o.value==='private_label')) tipo.value = 'private_label';
+  }
+  if(!sinRender) renderCalcPreview();
 }
 
 // Margen propio por producto (si se tocó a mano). Si no, usa el margen general.
@@ -2069,6 +2100,7 @@ async function onCalcDestinoChange(){
     document.getElementById("calc_margen").value = l.calc_margen;
     calcMargins = Object.assign({}, l.calc_margenes || {});
     document.querySelectorAll(".calc-cost-chk").forEach(cb=>cb.checked = (l.calc_costos||[]).includes(cb.value));
+    if(COST_PARAMS.some(c=>c.clave==='etiqueta')) setModoEtiqueta((l.calc_costos||[]).includes('etiqueta') ? 'etiquetado' : 'private_label', true);
     // marca solo los productos que ya están en esa lista
     try{
       const items = await sbGet(`pricing_list_items?lista_id=eq.${l.id}`);
