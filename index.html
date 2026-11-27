@@ -188,6 +188,7 @@
         <input type="hidden" id="p_id">
         <div class="row">
           <div class="field"><label>Código producto</label><input id="p_codigo" style="width:180px;"></div>
+          <div class="field"><label>Código EAN</label><input id="p_ean" style="width:150px;" inputmode="numeric" placeholder="8437020684057"></div>
           <div class="field"><label>Nombre producto</label><input id="p_nombre" style="width:280px;"></div>
           <div class="field"><label>Presentación (un.)</label><input id="p_pres_un" style="width:120px;" placeholder="ej 2 unid."></div>
           <div class="field"><label>Presentación (kg)</label><input id="p_pres_kg" style="width:110px;" placeholder="0,220 Kg."></div>
@@ -210,7 +211,7 @@
       </div>
       <table>
         <thead><tr>
-          <th>Código</th><th>Nombre</th><th>Categoría</th><th>Present.</th><th>Peso</th><th>Caja</th><th>Pallet</th><th>Caduc.</th><th>IVA</th><th>Estado</th><th></th>
+          <th>Código</th><th>EAN</th><th>Nombre</th><th>Categoría</th><th>Present.</th><th>Peso</th><th>Caja</th><th>Pallet</th><th>Caduc.</th><th>IVA</th><th>Estado</th><th></th>
         </tr></thead>
         <tbody id="productsTableBody"></tbody>
       </table>
@@ -571,7 +572,7 @@ const I18N = {
     distribuidor: "DISTRIBUIDOR",
     retail: "RETAIL",
     consumidor: "CONSUMIDOR",
-    codigo: "Código", producto: "Producto", presentacion: "Presentación",
+    codigo: "Código", ean: "EAN", producto: "Producto", presentacion: "Presentación",
     peso: "Peso", unCaja: "Un/caja", unPallet: "Un/pallet", caducidad: "Caducidad (meses)", iva: "IVA",
     precioSinIva: "Precio sin IVA", precioConIva: "Precio con IVA",
     precioRetail: "Precio Retail", margenDist: "Margen Dist. %",
@@ -595,7 +596,7 @@ const I18N = {
     distribuidor: "DISTRIBUTOR",
     retail: "RETAIL",
     consumidor: "CONSUMER",
-    codigo: "Code", producto: "Product", presentacion: "Format",
+    codigo: "Code", ean: "EAN", producto: "Product", presentacion: "Format",
     peso: "Weight", unCaja: "Units/box", unPallet: "Units/pallet", caducidad: "Shelf life (months)", iva: "VAT",
     precioSinIva: "Price excl. VAT", precioConIva: "Price incl. VAT",
     precioRetail: "Retail Price", margenDist: "Dist. Margin %",
@@ -738,6 +739,7 @@ function renderProductsTable(){
   tbody.innerHTML = PRODUCTS.map(p=>`
     <tr class="${p.activo?'':'inactivo'}">
       <td>${p.codigo_producto}</td>
+      <td>${p.ean||''}</td>
       <td>${p.nombre_producto}</td>
       <td>${p.categoria||''}</td>
       <td>${p.presentacion_unidades||''}</td>
@@ -755,7 +757,7 @@ function renderProductsTable(){
 function openProductForm(){ document.getElementById("productForm").style.display="block"; }
 function closeProductForm(){
   document.getElementById("productForm").style.display="none";
-  ["p_id","p_codigo","p_nombre","p_pres_un","p_pres_kg","p_peso","p_caja","p_pallet","p_caducidad","p_categoria"].forEach(id=>document.getElementById(id).value="");
+  ["p_id","p_codigo","p_ean","p_nombre","p_pres_un","p_pres_kg","p_peso","p_caja","p_pallet","p_caducidad","p_categoria"].forEach(id=>document.getElementById(id).value="");
   document.getElementById("p_iva").value = 4;
   document.getElementById("p_activo").value = "true";
 }
@@ -766,6 +768,7 @@ function editProduct(id){
   openProductForm();
   document.getElementById("p_id").value = p.id;
   document.getElementById("p_codigo").value = p.codigo_producto;
+  document.getElementById("p_ean").value = p.ean||"";
   document.getElementById("p_nombre").value = p.nombre_producto;
   document.getElementById("p_pres_un").value = p.presentacion_unidades||"";
   document.getElementById("p_categoria").value = p.categoria||"";
@@ -783,6 +786,7 @@ async function saveProduct(){
   const body = {
     business_line: CURRENT_BRAND,
     codigo_producto: document.getElementById("p_codigo").value.trim(),
+    ean: document.getElementById("p_ean").value.trim() || null,
     nombre_producto: document.getElementById("p_nombre").value.trim(),
     presentacion_unidades: document.getElementById("p_pres_un").value.trim(),
     categoria: document.getElementById("p_categoria").value.trim() || null,
@@ -1162,6 +1166,7 @@ async function renderTarifaPreview(){
     }
     return `<tr>
       <td class="txt">${p.codigo_producto}</td>
+      <td class="txt nowrap">${p.ean||''}</td>
       <td class="txt">${p.nombre_producto}</td>
       <td class="nowrap">${p.presentacion_unidades||''}</td>
       <td class="nowrap">${p.peso_unidad_grs||''}</td>
@@ -1191,17 +1196,17 @@ async function renderTarifaPreview(){
           <th>${tx.precioKgSinIva}</th>
         </tr>` : `
         <tr>
-          <th colspan="${esExterior?7:8}" style="background:#111;color:#fff;">${tx.datosProducto}</th>
+          <th colspan="${esExterior?8:9}" style="background:#111;color:#fff;">${tx.datosProducto}</th>
           <th colspan="${esExterior?1:2}" class="group-neutro">${lista.tipo==='distribuidor'?tx.distribuidor:nombreListaMostrar.toUpperCase()}</th>
           ${cfg.showRetail ? `<th colspan="2" class="group-retail">${tx.retail}</th>` : ''}
           ${cfg.showPvp ? `<th colspan="${cfg.showRentabRetail?3:2}" class="group-consumidor">${tx.consumidor}</th>` : ''}
         </tr>
         <tr>
-          <th class="txt">${tx.codigo}</th><th class="txt">${tx.producto}</th><th>${tx.presentacion}</th><th>${tx.peso}</th><th>${tx.unCaja}</th><th>${tx.unPallet}</th><th>${tx.caducidad}</th>${esExterior ? '' : `<th>${tx.iva}</th>`}
+          <th class="txt">${tx.codigo}</th><th class="txt">${tx.ean}</th><th class="txt">${tx.producto}</th><th>${tx.presentacion}</th><th>${tx.peso}</th><th>${tx.unCaja}</th><th>${tx.unPallet}</th><th>${tx.caducidad}</th>${esExterior ? '' : `<th>${tx.iva}</th>`}
           <th>${tx.precioSinIva}</th>${esExterior ? '' : `<th>${tx.precioConIva}</th>`}
           ${cascadeHeaders(cfg, tx).map(h=>`<th>${h}</th>`).join("")}
         </tr>`;
-  const colspanEmpty = isSimpleColumns ? 6 : ((esExterior ? 8 : 10) + cascadeHeaders(cfg, tx).length);
+  const colspanEmpty = isSimpleColumns ? 6 : ((esExterior ? 9 : 11) + cascadeHeaders(cfg, tx).length);
 
   if(myToken !== tarifaRenderToken) return; // llegó una actualización más nueva mientras esperábamos
   preview.innerHTML = `
@@ -1373,22 +1378,23 @@ function buildHeadBody(data, tx){
     columnStyles = { 3:{cellWidth:22, halign:'center'}, 4:{cellWidth:18, halign:'center'} };
   } else {
     head = data.esExterior
-      ? [[tx.codigo, tx.producto, tx.presentacion, tx.peso, tx.unCaja, tx.unPallet, tx.caducidad, tx.precioSinIva]]
-      : [[tx.codigo, tx.producto, tx.presentacion, tx.peso, tx.unCaja, tx.unPallet, tx.caducidad, tx.iva, tx.precioSinIva, tx.precioConIva]];
+      ? [[tx.codigo, tx.ean, tx.producto, tx.presentacion, tx.peso, tx.unCaja, tx.unPallet, tx.caducidad, tx.precioSinIva]]
+      : [[tx.codigo, tx.ean, tx.producto, tx.presentacion, tx.peso, tx.unCaja, tx.unPallet, tx.caducidad, tx.iva, tx.precioSinIva, tx.precioConIva]];
     head[0].push(...cascadeHeaders(data.cascade, tx));
     body = data.selected.map(p=>{
       const sinIva = data.priceByProduct[p.id];
       const conIva = calcConIva(sinIva, p.iva_pct);
       const row = data.esExterior
-        ? [p.codigo_producto, p.nombre_producto, p.presentacion_unidades||'', p.peso_unidad_grs||'', p.unidades_caja||'', p.unidades_pallet||'', p.caducidad_meses||'', sinIva.toFixed(2)+' €']
-        : [p.codigo_producto, p.nombre_producto, p.presentacion_unidades||'', p.peso_unidad_grs||'', p.unidades_caja||'', p.unidades_pallet||'', p.caducidad_meses||'', p.iva_pct+'%', sinIva.toFixed(2)+' €', conIva.toFixed(2)+' €'];
+        ? [p.codigo_producto, p.ean||'', p.nombre_producto, p.presentacion_unidades||'', p.peso_unidad_grs||'', p.unidades_caja||'', p.unidades_pallet||'', p.caducidad_meses||'', sinIva.toFixed(2)+' €']
+        : [p.codigo_producto, p.ean||'', p.nombre_producto, p.presentacion_unidades||'', p.peso_unidad_grs||'', p.unidades_caja||'', p.unidades_pallet||'', p.caducidad_meses||'', p.iva_pct+'%', sinIva.toFixed(2)+' €', conIva.toFixed(2)+' €'];
       row.push(...cascadeValues(data.cascade, p, sinIva, conIva, data.retailItems, data.pvpItems));
       return row;
     });
     columnStyles = {
-      2:{cellWidth:19, halign:'center'}, // Presentación: "2 unid."
-      3:{cellWidth:16, halign:'center'}, // Peso: "0,220 Kg."
-      6:{cellWidth:16, halign:'center'}  // Caducidad (meses)
+      1:{cellWidth:23},                  // EAN
+      3:{cellWidth:19, halign:'center'}, // Presentación: "2 unid."
+      4:{cellWidth:16, halign:'center'}, // Peso: "0,220 Kg."
+      7:{cellWidth:16, halign:'center'}  // Caducidad (meses)
     };
   }
   // Fila de grupos, igual que la vista previa en pantalla
@@ -1398,12 +1404,12 @@ function buildHeadBody(data, tx){
     textCols = 3;
   } else {
     groups = [
-      {content:tx.datosProducto, colSpan:data.esExterior?7:8},
+      {content:tx.datosProducto, colSpan:data.esExterior?8:9},
       {content:data.lista.tipo==='distribuidor'?tx.distribuidor:data.nombreListaMostrar, colSpan:data.esExterior?1:2}
     ];
     if(data.cascade.showRetail) groups.push({content:tx.retail, colSpan:2});
     if(data.cascade.showPvp) groups.push({content:tx.consumidor, colSpan:data.cascade.showRentabRetail?3:2});
-    textCols = 2;
+    textCols = 3; // Código, EAN y Producto a la izquierda
   }
   return {head, body, columnStyles, groups, textCols};
 }
@@ -1708,13 +1714,13 @@ async function buildComisionData(){
   const showPvp = !!(lista && lista.lista_pvp_ref_id);
   const tx = I18N.es;
   const selected = PRODUCTS.filter(p=>comSelectedIds.has(p.id) && priceByProduct[p.id]!==undefined);
-  const head = [tx.codigo, tx.producto, tx.presentacion, tx.peso, tx.unCaja, tx.unPallet, tx.caducidad, tx.iva, tx.precioSinIva, tx.precioConIva, TX_COM.comisionCol];
+  const head = [tx.codigo, tx.ean, tx.producto, tx.presentacion, tx.peso, tx.unCaja, tx.unPallet, tx.caducidad, tx.iva, tx.precioSinIva, tx.precioConIva, TX_COM.comisionCol];
   if(showPvp) head.push(TX_COM.pvpSinIva, TX_COM.rentabRetail);
   const body = selected.map(p=>{
     const sinIva = priceByProduct[p.id];
     const conIva = calcConIva(sinIva, p.iva_pct);
     const comision = sinIva * pct / 100;
-    const row = [p.codigo_producto, p.nombre_producto, p.presentacion_unidades||'', p.peso_unidad_grs||'', p.unidades_caja||'', p.unidades_pallet||'', p.caducidad_meses||'', p.iva_pct+'%',
+    const row = [p.codigo_producto, p.ean||'', p.nombre_producto, p.presentacion_unidades||'', p.peso_unidad_grs||'', p.unidades_caja||'', p.unidades_pallet||'', p.caducidad_meses||'', p.iva_pct+'%',
                  sinIva.toFixed(2)+' €', conIva.toFixed(2)+' €', comision.toFixed(2)+' €'];
     if(showPvp){
       const pvp = pvpItems[p.id];
@@ -1724,7 +1730,7 @@ async function buildComisionData(){
     return row;
   });
   const groups = lista ? [
-    {content: tx.datosProducto, colSpan: 8},
+    {content: tx.datosProducto, colSpan: 9},
     {content: lista.nombre_lista, colSpan: 2},
     {content: TX_COM.comisionLbl(pct), colSpan: 1}
   ] : [];
@@ -1752,8 +1758,8 @@ async function renderComisionPreview(){
   const brand = BRANDS[CURRENT_BRAND];
   const tx = I18N.es;
   const fecha = d.fechaVal ? new Date(d.fechaVal+"T00:00:00").toLocaleDateString('es-ES') : "—";
-  const comIdx = 10; // columna Comisión (€)
-  const rows = d.body.map(r=>`<tr>${r.map((v,i)=>`<td class="${i<2?'txt':''}${(i===2||i===3||i===6)?' nowrap':''}"${i===comIdx?' style="font-weight:600;"':''}>${v}</td>`).join("")}</tr>`).join("");
+  const comIdx = 11; // columna Comisión (€)
+  const rows = d.body.map(r=>`<tr>${r.map((v,i)=>`<td class="${i<3?'txt':''}${(i===1||i===3||i===4||i===7)?' nowrap':''}"${i===comIdx?' style="font-weight:600;"':''}>${v}</td>`).join("")}</tr>`).join("");
   preview.innerHTML = `
     <div class="tarifa-header">
       <div class="tarifa-logo-box"><img src="${brand.logo}" alt="${brand.label}"></div>
@@ -1788,8 +1794,8 @@ async function prepareComisionPDF(){
   const listaLabel = `${d.lista.numero_lista?tx.precioLbl(d.lista.numero_lista):''}${d.lista.nombre_lista}`;
   const doc = buildTarifaPDFDoc({
     brand, tx, cliente: d.nombre, listaLabel, fechaStr,
-    head: [d.head], body: d.body, groups: d.groups, textCols: 2,
-    columnStyles: { 2:{cellWidth:19}, 3:{cellWidth:16}, 6:{cellWidth:16}, 10:{fontStyle:'bold'} },
+    head: [d.head], body: d.body, groups: d.groups, textCols: 3,
+    columnStyles: { 1:{cellWidth:23}, 3:{cellWidth:19}, 4:{cellWidth:16}, 7:{cellWidth:16}, 11:{fontStyle:'bold'} },
     condicionesMostrar: d.lista.condiciones_texto || '', aclaracion: d.aclaracion,
     orientation: pickOrientation(d.head), hidePago: true
   });
